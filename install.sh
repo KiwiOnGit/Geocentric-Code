@@ -51,9 +51,18 @@ rm -rf "$DEST"
 cp -R "$APP_BUNDLE" "$DEST"
 
 # A fresh download is quarantined by Gatekeeper and unsigned (or signed by
-# someone else's ad-hoc identity, which doesn't count as "yours" either way) -
-# both would throw a "damaged, move to Trash" error on first launch otherwise.
-xattr -cr "$DEST" 2>/dev/null || true
+# someone else's ad-hoc identity, which doesn't count as "yours" either way).
+# Left in place, quarantine can make Gatekeeper run the app from a randomized,
+# read-only translocated copy instead of $DEST - on some Macs that's just a
+# "damaged, move to Trash" error, on others it's silently there and breaks
+# anything that expects to find its own bundle contents at a normal path.
+# `cp -R` above preserves xattrs, so this isn't optional cleanup - verify it
+# actually took rather than assuming.
+xattr -cr "$DEST" 2>/dev/null
+if xattr -p com.apple.quarantine "$DEST" >/dev/null 2>&1; then
+    warn "Quarantine flag is still set on $DEST after clearing it once."
+    warn "The app may run from a Gatekeeper-translocated copy - if anything looks off, quit it and run: xattr -cr \"$DEST\""
+fi
 codesign --force --deep --sign - "$DEST" 2>/dev/null || warn "Ad-hoc codesign failed - the app may refuse to open until you right-click → Open it once."
 
 # ------------------------------------------------------------------ the engine
